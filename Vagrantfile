@@ -19,6 +19,7 @@ $vm_memory = 1024
 $vm_cpus = 1
 $shared_folders = {}
 $forwarded_ports = {}
+$ip_address_prefix = "172.17.8."
 
 # Attempt to apply the deprecated environment variable NUM_INSTANCES to
 # $num_instances while allowing config.rb to override it
@@ -46,6 +47,7 @@ end
 Vagrant.configure("2") do |config|
   # always use Vagrants insecure key
   config.ssh.insert_key = false
+  config.ssh.forward_agent = true
 
   config.vm.box = "coreos-%s" % $update_channel
   config.vm.box_version = ">= 308.0.1"
@@ -67,6 +69,15 @@ Vagrant.configure("2") do |config|
   # plugin conflict
   if Vagrant.has_plugin?("vagrant-vbguest") then
     config.vbguest.auto_update = false
+  end
+
+  # generate content for a hosts file so that all the nodes
+  # can talk to each other by hostname.
+  hostsfile = "127.0.0.1 localhost\n"
+  (1..$num_instances).each do |i|
+    vm_name = "%s-%02d" % [$instance_name_prefix, i]
+    ip = $ip_address_prefix + "#{i+100}"
+    hostsfile << "#{ip} #{vm_name}\n"
   end
 
   (1..$num_instances).each do |i|
@@ -117,7 +128,7 @@ Vagrant.configure("2") do |config|
         vb.cpus = vm_cpus
       end
 
-      ip = "172.17.8.#{i+100}"
+      ip = $ip_address_prefix + "#{i+100}"
       config.vm.network :private_network, ip: ip
 
       # Uncomment below to enable NFS for sharing the host machine into the coreos-vagrant VM.
@@ -135,6 +146,10 @@ Vagrant.configure("2") do |config|
         config.vm.provision :shell, :inline => "mv /tmp/vagrantfile-user-data /var/lib/coreos-vagrant/", :privileged => true
       end
 
+      # now create the hosts file with the content that we generated
+      config.vm.provision :shell, :inline => "echo \"#{hostsfile}\" > /etc/hosts", :privileged => true
+      #config.vm.provision :shell, :inline => "echo \"nameserver 8.8.8.8\" > /etc/resolv.conf", :privileged => true
+      #config.vm.provision :file, :source => "~/.vagrant.d/insecure_private_key", :destination => ".ssh/id_rsa"
     end
   end
 end
