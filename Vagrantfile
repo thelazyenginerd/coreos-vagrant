@@ -152,7 +152,7 @@ Vagrant.configure("2") do |config|
       # now create the hosts file with the content that we generated
       config.vm.provision :shell, :inline => "echo \"#{hostsfile}\" > /etc/hosts", :privileged => true
       #config.vm.provision :shell, :inline => "echo \"nameserver 8.8.8.8\" > /etc/resolv.conf", :privileged => true
-      #config.vm.provision :file, :source => "~/.vagrant.d/insecure_private_key", :destination => ".ssh/id_rsa"
+      config.vm.provision :file, :source => "~/.vagrant.d/insecure_private_key", :destination => ".ssh/id_rsa"
     end
   end
 end
