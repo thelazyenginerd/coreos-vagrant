@@ -3,7 +3,7 @@
 
 require 'fileutils'
 
-Vagrant.require_version ">= 1.6.0"
+Vagrant.require_version ">= 1.8.0"
 
 CLOUD_CONFIG_PATH = File.join(File.dirname(__FILE__), "user-data")
 CONFIG = File.join(File.dirname(__FILE__), "config.rb")
@@ -22,6 +22,14 @@ $vb_cpuexecutioncap = 100
 $shared_folders = {}
 $forwarded_ports = {}
 $ip_address_prefix = "172.17.8."
+$ndrives = 3
+$controller_name = "IDE Controller"
+$ide_controller_settings = [
+  [0, 0], # this is used by root drive
+  [0, 1],
+  [1, 0],
+  [1, 1]
+]
 
 # Attempt to apply the deprecated environment variable NUM_INSTANCES to
 # $num_instances while allowing config.rb to override it
@@ -132,6 +140,24 @@ Vagrant.configure("2") do |config|
         vb.memory = vm_memory
         vb.cpus = vm_cpus
         vb.customize ["modifyvm", :id, "--cpuexecutioncap", "#{$vb_cpuexecutioncap}"]
+      end
+
+      # Additional Storage
+      config.vm.provider :virtualbox do |vb|
+        # Add controller
+        #vb.customize ['storagectl', :id, '--name', $controller_name, '--add', 'sata', '--controller', 'IntelAHCI', '--portcount', $ndrives, '--hostiocache', 'off', '--bootable', 'off']
+
+        # Add a few drives
+        (1..$ndrives).each do |drive|
+          file_to_disk = "#{vm_name}-raid-disk%02d.vdi" % [drive]
+          unless File.exist?(file_to_disk)
+            vb.customize ['createmedium', 'disk', '--format', 'VDI', '--filename', file_to_disk, '--size', ($drive_size_gb * 1024)]
+          end
+          #vb.customize ['storageattach', :id, '--storagectl', $controller_name, '--port', (drive-1), '--type', 'hdd', '--medium', file_to_disk]
+          port = $ide_controller_settings[drive][0]
+          device = $ide_controller_settings[drive][1]
+          vb.customize ['storageattach', :id, '--storagectl', $controller_name, '--port', port, '--device', device, '--type', 'hdd', '--medium', file_to_disk]
+        end
       end
 
       ip = $ip_address_prefix + "#{i+100}"

@@ -1,43 +1,90 @@
 #cloud-config
 
+---
 coreos:
+  update:
+    reboot-strategy: etcd-lock
   etcd2:
-    #generate a new token for each unique cluster from https://discovery.etcd.io/new
-    #discovery: https://discovery.etcd.io/<token>
-    # multi-region and multi-cloud deployments need to use $public_ipv4
     advertise-client-urls: http://$public_ipv4:2379
     initial-advertise-peer-urls: http://$private_ipv4:2380
-    # listen on both the official ports and the legacy ports
-    # legacy ports can be omitted if your application doesn't depend on them
     listen-client-urls: http://0.0.0.0:2379,http://0.0.0.0:4001
     listen-peer-urls: http://$private_ipv4:2380,http://$private_ipv4:7001
+    discovery: https://discovery.etcd.io/547764693fe7c711141836828b53eaf6
   fleet:
-    public-ip: $public_ipv4
+    public-ip: "$public_ipv4"
   flannel:
-    interface: $public_ipv4
+    interface: "$public_ipv4"
   units:
-    - name: etcd2.service
-      command: start
-    - name: fleet.service
-      command: start
-    - name: flanneld.service
-      drop-ins:
-      - name: 50-network-config.conf
-        content: |
-          [Service]
-          ExecStartPre=/usr/bin/etcdctl set /coreos.com/network/config '{ "Network": "10.1.0.0/16" }'
-      command: start
-    - name: docker-tcp.socket
-      command: start
-      enable: true
+  - name: etcd2.service
+    command: start
+  - name: fleet.service
+    command: start
+  - name: flanneld.service
+    drop-ins:
+    - name: 50-network-config.conf
       content: |
-        [Unit]
-        Description=Docker Socket for the API
+        [Service]
+        ExecStartPre=/usr/bin/etcdctl set /coreos.com/network/config '{ "Network": "10.1.0.0/16" }'
+    command: start
+  - name: docker-tcp.socket
+    command: start
+    enable: true
+    content: |
+      [Unit]
+      Description=Docker Socket for the API
 
-        [Socket]
-        ListenStream=2375
-        Service=docker.service
-        BindIPv6Only=both
+      [Socket]
+      ListenStream=2375
+      Service=docker.service
+      BindIPv6Only=both
 
-        [Install]
-        WantedBy=sockets.target
+      [Install]
+      WantedBy=sockets.target
+  - name: create-raid-persistent-volume.service
+    command: start
+    content: |
+      [Unit]
+      Description=Create RAID for persistent volume
+      After=dev-sdb.device dev-sdc.device dev-sdd.device
+
+      [Service]
+      Type=oneshot
+      RemainAfterExit=yes
+      ExecStart=/tmp/create-raid.sh /dev/md0 /dev/sdb /dev/sdc /dev/sdd
+  - name: data-persistent.mount
+    command: start
+    content: |
+      [Unit]
+      Description=Mount persistent volume
+      Requires=create-raid-persistent-volume.service
+      After=create-raid-persistent-volume.service
+
+      [Mount]
+      What=/dev/disk/by-label/PERSISTENT
+      Where=/data/persistent
+      Type=ext4
+
+      [Install]
+      WantedBy=multi-user.target
+write_files:
+- path: "/tmp/create-raid.sh"
+  permissions: '0700'
+  content: |
+    #!/bin/bash -eux
+    CONF=/etc/mdadm.conf
+    if [[ -e "${CONF}" ]]; then
+      exit 0
+    fi
+
+    RAID_DEVICE=$1; shift
+    DEVICES="$@"
+    NDEVICES=$(echo "${DEVICES}" | wc -w)
+    /usr/sbin/mdadm \
+      --create "${RAID_DEVICE}" \
+      --level=0 \
+      --raid-devices=${NDEVICES} \
+      ${DEVICES}
+
+    echo "DEVICE partitions" > "${CONF}"
+    /usr/sbin/mdadm --detail --scan >> "${CONF}"
+    /usr/sbin/mkfs.ext4 -L PERSISTENT "${RAID_DEVICE}"

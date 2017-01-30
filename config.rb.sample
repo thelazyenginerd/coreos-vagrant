@@ -53,7 +53,7 @@ end
 #$image_version = "current"
 
 # Official CoreOS channel from which updates should be downloaded
-#$update_channel='alpha'
+$update_channel='beta'
 
 # Log the serial consoles of CoreOS VMs to log/
 # Enable by setting value to true, disable with false
@@ -75,9 +75,8 @@ end
 
 # Customize VMs
 #$vm_gui = false
-#$vm_memory = 1024
+$vm_memory = 512
 #$vm_cpus = 1
-#$vb_cpuexecutioncap = 100
 
 # Share additional folders to the CoreOS VMs
 # For example,
@@ -88,3 +87,6 @@ end
 
 # Enable port forwarding from guest(s) to host machine, syntax is: { 80 => 8080 }, auto correction is enabled by default.
 #$forwarded_ports = {}
+#$ndrives = 3
+$drive_size_gb = 5
+#$controller_name = "SATA-RAID"
