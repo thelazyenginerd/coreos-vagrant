@@ -3,43 +3,54 @@
 ---
 coreos:
   update:
-    reboot-strategy: etcd-lock
-  etcd2:
-    advertise-client-urls: http://$public_ipv4:2379
-    initial-advertise-peer-urls: http://$private_ipv4:2380
-    listen-client-urls: http://0.0.0.0:2379,http://0.0.0.0:4001
-    listen-peer-urls: http://$private_ipv4:2380,http://$private_ipv4:7001
-    discovery: https://discovery.etcd.io/b6073bbcc1609aa625bc7001c0855b5a
-  fleet:
-    public-ip: "$public_ipv4"
-  flannel:
-    interface: "$public_ipv4"
+    reboot-strategy: 'off'
   units:
-  - name: etcd2.service
-    command: start
-  - name: fleet.service
-    command: start
-  - name: flanneld.service
-    drop-ins:
-    - name: 50-network-config.conf
-      content: |
-        [Service]
-        ExecStartPre=/usr/bin/etcdctl set /coreos.com/network/config '{ "Network": "10.1.0.0/16" }'
-    command: start
-  - name: docker-tcp.socket
+  - name: appdb.service
     command: start
     enable: true
     content: |
       [Unit]
-      Description=Docker Socket for the API
+      Description=Application Postgresql Database
+      Requires=docker.service data-persistent.mount
+      After=docker.service data-persistent.mount
 
-      [Socket]
-      ListenStream=2375
-      Service=docker.service
-      BindIPv6Only=both
+      [Service]
+      ExecStartPre=-/usr/bin/docker kill appdb
+      ExecStartPre=-/usr/bin/docker rm appdb
+      ExecStartPre=/usr/bin/docker pull postgres:9.4
+      ExecStartPre=-mkdir -p /data/persistent/fpg
+      ExecStart=/usr/bin/docker run \
+          --env POSTGRES_USER=postgres \
+          --env POSTGRES_PASSWORD=p0stgres \
+          --name appdb \
+          --volume /data/persistent/fpg:/var/lib/postgresql/data \
+          postgres:9.4
+      ExecStop=/usr/bin/docker stop appdb
 
       [Install]
-      WantedBy=sockets.target
+      WantedBy=multi-user.target
+  - name: appdb-client.service
+    command: stop
+    enable: true
+    content: |
+      [Unit]
+      Description=Application Database Client
+      Requires=docker.service appdb.service
+      After=docker.service appdb.service
+
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/bin/docker run --rm \
+          --link appdb:appdb \
+          --env PGUSER=postgres \
+          --env PGPASSWORD=p0stgres \
+          --env PGDATABASE=postgres \
+          postgres:9.4 \
+          psql -h appdb \
+            --command="\\l"
+
+      [Install]
+      WantedBy=multi-user.target
   - name: create-raid-persistent-volume.service
     command: start
     content: |

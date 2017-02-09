@@ -1,5 +1,5 @@
 # Size of the CoreOS cluster created by Vagrant
-$num_instances=3
+$num_instances=1
 
 # Used to fetch a new discovery token for a cluster of size $num_instances
 $new_discovery_url="https://discovery.etcd.io/new?size=#{$num_instances}"
@@ -75,7 +75,7 @@ $update_channel='beta'
 
 # Customize VMs
 #$vm_gui = false
-$vm_memory = 256
+$vm_memory = 512
 #$vm_cpus = 1
 
 # Share additional folders to the CoreOS VMs
